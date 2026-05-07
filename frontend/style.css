@@ -518,6 +518,21 @@ body {
   to { transform: translateX(100%); opacity: 0; }
 }
 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.165, 0.84, 0.44, 1) forwards;
+}
+
 .login-bg,
 .bg-home,
 .bg-archives,
@@ -578,13 +593,18 @@ body {
 .profile-card {
   text-align: center;
   padding: 34px 28px 28px;
-  position: sticky;
-  top: 100px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%),
     var(--card-deep);
   border-color: var(--card-line);
   box-shadow: 0 22px 44px rgba(6, 10, 18, 0.28);
+}
+
+/* 整个侧边栏一起 sticky，profile + 音乐卡片都保持在视口内 */
+.home-sidebar {
+  position: sticky;
+  top: 90px;
+  align-self: start;
 }
 
 .profile-avatar {
@@ -1063,6 +1083,148 @@ body {
   color: rgba(255, 255, 255, 0.84);
 }
 
+/* ── 音乐播放器卡片 (黑胶唱片风格) ── */
+.music-player-card {
+  padding: 24px;
+  background:
+    linear-gradient(140deg, rgba(100, 200, 255, 0.1) 0%, rgba(100, 150, 255, 0.05) 50%, rgba(255, 255, 255, 0.02) 100%),
+    rgba(14, 20, 35, 0.8);
+  border-color: rgba(130, 180, 255, 0.2);
+  margin-top: 0;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.music-player-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.music-player-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(180, 230, 255, 0.9);
+  letter-spacing: 0.02em;
+}
+
+.music-note-svg {
+  color: #82b1ff;
+}
+
+/* 黑胶唱片部分 */
+.vinyl-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 0;
+}
+
+.vinyl-wrapper {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+}
+
+.vinyl-disk {
+  width: 100%;
+  height: 100%;
+  background: #111;
+  background: radial-gradient(circle, #333 0%, #111 40%, #222 50%, #111 60%, #333 100%);
+  border-radius: 50%;
+  position: relative;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: rotateVinyl 8s linear infinite;
+}
+
+.vinyl-disk::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+}
+
+.vinyl-cover {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: url('/avatar.jpg') no-repeat center center; /* 默认使用头像作为封面 */
+  background-size: cover;
+  border: 2px solid #000;
+  z-index: 2;
+}
+
+.vinyl-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.music-song-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.music-artist-name {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+@keyframes rotateVinyl {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Iframe 播放器最小化处理 */
+.music-iframe-wrap {
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  height: 70px;
+}
+
+.music-iframe-wrap iframe {
+  display: block;
+  filter: invert(1) hue-rotate(180deg) brightness(1.5) contrast(0.9); /* 让播放器适应深色玻璃模式 */
+  margin-top: -10px; /* 隐藏部分多余 UI */
+}
+
+.music-player-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.netease-more-link {
+  color: rgba(130, 177, 255, 0.8);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.netease-more-link:hover {
+  color: #fff;
+  transform: translateX(3px);
+}
+
+/* ── end 音乐播放器卡片 ── */
+
 .global-footer {
   position: relative;
   z-index: 10;
@@ -1112,6 +1274,10 @@ body {
 
   .home-layout {
     grid-template-columns: 1fr;
+  }
+
+  .home-sidebar {
+    position: static;   /* 移动端不 sticky */
   }
 
   .profile-card {
