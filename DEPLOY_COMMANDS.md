@@ -5,11 +5,40 @@
 ```powershell
 cd C:\Users\admin\Desktop\blog
 git add .
-git commit -m "Add gallery feature and improve Taishan Pi deploy"
+git commit -m "Add gallery and Taishan one-click deploy"
 git push origin main
 ```
 
-## 2. 泰山派更新网站
+## 2. 泰山派一键修复、部署、映射公网
+
+优先用这个：
+
+```bash
+ssh 用户名@泰山派IP
+cd ~/blog
+bash taishan-one-click.sh
+```
+
+它会自动完成：
+
+- 备份 `backend/blog.sqlite`
+- 备份 `backend/uploads`
+- 强制同步 GitHub 最新代码
+- 恢复数据库和上传图片
+- 清理旧 `node_modules`
+- 在泰山派上重新安装依赖
+- 构建前端
+- 启动或重启 `pm2` 后端进程
+- 配置或检查 Cloudflare Tunnel
+
+如果只想部署网站，不想配置 Cloudflare Tunnel：
+
+```bash
+cd ~/blog
+WITH_TUNNEL=0 bash taishan-one-click.sh
+```
+
+## 3. 泰山派普通更新网站
 
 ```bash
 ssh 用户名@泰山派IP
@@ -60,7 +89,7 @@ cloudflared tunnel list
 cloudflared tunnel info blog-tunnel
 ```
 
-## 4. “文件格式不支持”的简便解决方式
+## 5. “文件格式不支持”的简便解决方式
 
 泰山派是 Linux/ARM，不要上传 Windows 里的 `node_modules`。如果遇到类似 `Exec format error`、`invalid ELF header`、`file format not recognized`，直接在泰山派重新安装依赖：
 
@@ -98,7 +127,7 @@ sed -i 's/\r$//' deploy.sh setup-git.sh
 bash deploy.sh
 ```
 
-## 5. 相册上传格式
+## 6. 相册上传格式
 
 相册支持：JPG、PNG、WebP、GIF、AVIF，单张最大 10MB。
 
@@ -110,7 +139,7 @@ sudo apt install -y libheif-examples
 heif-convert input.heic output.jpg
 ```
 
-## 6. 访问入口
+## 7. 访问入口
 
 - 网站首页：`https://t1anjhonline.com`
 - 相册页：`https://t1anjhonline.com/gallery`
