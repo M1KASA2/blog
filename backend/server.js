@@ -4,6 +4,8 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const db = require('./database');
 
 const app = express();
@@ -13,6 +15,45 @@ app.use(express.json());
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_liquid_glass_blog_key';
 const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
+const uploadsPath = path.resolve(__dirname, 'uploads');
+const photosPath = path.join(uploadsPath, 'photos');
+
+fs.mkdirSync(photosPath, { recursive: true });
+
+const allowedImageTypes = new Map([
+    ['image/jpeg', '.jpg'],
+    ['image/png', '.png'],
+    ['image/webp', '.webp'],
+    ['image/gif', '.gif'],
+    ['image/avif', '.avif'],
+]);
+
+const photoStorage = multer.diskStorage({
+    destination: photosPath,
+    filename: (req, file, cb) => {
+        const ext = allowedImageTypes.get(file.mimetype) || path.extname(file.originalname).toLowerCase();
+        const safeName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+        cb(null, safeName);
+    },
+});
+
+const uploadPhoto = multer({
+    storage: photoStorage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!allowedImageTypes.has(file.mimetype)) {
+            cb(new Error('仅支持 JPG、PNG、WebP、GIF、AVIF。iPhone 的 HEIC 请先转成 JPG 或 WebP。'));
+            return;
+        }
+
+        cb(null, true);
+    },
+}).single('photo');
+
+const mapPhotoRow = (row) => ({
+    ...row,
+    url: `/uploads/photos/${row.filename}`,
+});
 
 // Middleware to verify JWT
 const authenticateToken = (req, res, next) => {
@@ -97,6 +138,77 @@ app.delete('/api/articles/:id', authenticateToken, (req, res) => {
         res.json({ deleted: this.changes });
     });
 });
+
+// Photos Routes: Get all
+app.get('/api/photos', (req, res) => {
+    db.all(`SELECT * FROM photos ORDER BY createdAt DESC`, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows.map(mapPhotoRow));
+    });
+});
+
+// Photos Routes: Upload (Protected)
+app.post('/api/photos', authenticateToken, (req, res) => {
+    uploadPhoto(req, res, (uploadErr) => {
+        if (uploadErr) {
+            const status = uploadErr.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+            return res.status(status).json({ error: uploadErr.message });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: '请选择要上传的照片。' });
+        }
+
+        const title = (req.body.title || path.parse(req.file.originalname).name || '未命名照片').trim();
+        const description = (req.body.description || '').trim();
+
+        db.run(
+            `INSERT INTO photos (title, description, filename, originalName, mimeType, size)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [title, description, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size],
+            function(err) {
+                if (err) {
+                    fs.unlink(path.join(photosPath, req.file.filename), () => {});
+                    return res.status(500).json({ error: err.message });
+                }
+
+                db.get(`SELECT * FROM photos WHERE id = ?`, [this.lastID], (selectErr, row) => {
+                    if (selectErr) return res.status(500).json({ error: selectErr.message });
+                    res.status(201).json(mapPhotoRow(row));
+                });
+            },
+        );
+    });
+});
+
+// Photos Routes: Update metadata (Protected)
+app.put('/api/photos/:id', authenticateToken, (req, res) => {
+    const { title = '', description = '' } = req.body;
+
+    db.run(
+        `UPDATE photos SET title = ?, description = ? WHERE id = ?`,
+        [title.trim(), description.trim(), req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ updated: this.changes });
+        },
+    );
+});
+
+// Photos Routes: Delete (Protected)
+app.delete('/api/photos/:id', authenticateToken, (req, res) => {
+    db.get(`SELECT filename FROM photos WHERE id = ?`, [req.params.id], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!row) return res.status(404).json({ error: 'Not found' });
+
+        db.run(`DELETE FROM photos WHERE id = ?`, [req.params.id], function(deleteErr) {
+            if (deleteErr) return res.status(500).json({ error: deleteErr.message });
+
+            fs.unlink(path.join(photosPath, row.filename), () => {});
+            res.json({ deleted: this.changes });
+        });
+    });
+});
 // Settings Routes: Get single setting
 app.get('/api/settings/:key', (req, res) => {
     db.get(`SELECT value FROM settings WHERE key = ?`, [req.params.key], (err, row) => {
@@ -117,6 +229,7 @@ app.put('/api/settings/:key', authenticateToken, (req, res) => {
     });
 });
 
+app.use('/uploads', express.static(uploadsPath));
 app.use(express.static(frontendDistPath));
 
 app.get(/^\/(?!api).*/, (req, res) => {

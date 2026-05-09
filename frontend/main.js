@@ -45,6 +45,14 @@ const formatDateTime = (value) =>
     hour12: false,
   });
 
+const formatFileSize = (bytes = 0) => {
+  if (!bytes) return '0 KB';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const size = bytes / Math.pow(1024, index);
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};
+
 const normalizeExcerpt = (value = '', maxLength = 120) => {
   const text = String(value)
     .replace(/[`>#*_~\-]/g, '')
@@ -140,6 +148,11 @@ const router = async () => {
     return;
   }
 
+  if (path === '/gallery') {
+    await renderGallery();
+    return;
+  }
+
   if (path === '/about') {
     await renderAbout();
     return;
@@ -163,6 +176,16 @@ const router = async () => {
     }
 
     await renderAdmin();
+    return;
+  }
+
+  if (path === '/admin/gallery') {
+    if (!token) {
+      navigateTo('/login');
+      return;
+    }
+
+    await renderAdminGallery();
     return;
   }
 
@@ -306,8 +329,12 @@ async function renderSearch(q) {
 
 async function renderHome() {
   try {
-    const res = await fetch(`${API_URL}/articles`);
-    const articles = await res.json();
+    const [articlesRes, photosRes] = await Promise.all([
+      fetch(`${API_URL}/articles`),
+      fetch(`${API_URL}/photos`),
+    ]);
+    const articles = await articlesRes.json();
+    const photos = photosRes.ok ? await photosRes.json() : [];
 
     const articlesHtml = articles.length
       ? articles.map((article, index) => buildArticleCard(article, index, index === 0)).join('')
@@ -344,9 +371,9 @@ async function renderHome() {
                 <span class="stat-value">${articles.length}</span>
                 <span class="stat-label">文章</span>
               </a>
-              <a href="/archives" data-link class="stat-item">
-                <span class="stat-value">1</span>
-                <span class="stat-label">专题</span>
+              <a href="/gallery" data-link class="stat-item">
+                <span class="stat-value">${photos.length}</span>
+                <span class="stat-label">照片</span>
               </a>
               <a href="/about" data-link class="stat-item">
                 <span class="stat-value">∞</span>
@@ -442,6 +469,108 @@ async function renderArchives() {
       <div class="glass-card page-state">
         <h2>加载归档失败</h2>
         <p>后端接口没有响应，稍后再试试看。</p>
+      </div>
+    `;
+  }
+}
+
+function buildPhotoCard(photo, index = 0) {
+  const title = photo.title || '未命名照片';
+  const description = photo.description || '收藏在相册里的一个瞬间。';
+
+  return `
+    <article class="glass-card photo-card" style="--photo-delay:${Math.min(index * 55, 420)}ms">
+      <button class="photo-frame" type="button" data-photo-id="${photo.id}" aria-label="查看照片：${escapeHtml(title)}">
+        <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(title)}" loading="lazy" />
+      </button>
+      <div class="photo-card-body">
+        <div>
+          <h2>${escapeHtml(title)}</h2>
+          <p>${escapeHtml(description)}</p>
+        </div>
+        <div class="photo-meta">
+          <span>${formatLongDate(photo.createdAt)}</span>
+          <span>${formatFileSize(photo.size)}</span>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function openPhotoLightbox(photo) {
+  const existing = document.querySelector('.photo-lightbox');
+  if (existing) existing.remove();
+
+  const lightbox = document.createElement('div');
+  lightbox.className = 'photo-lightbox';
+  lightbox.innerHTML = `
+    <button class="photo-lightbox-close" type="button" aria-label="关闭照片">×</button>
+    <figure class="photo-lightbox-panel">
+      <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.title || '相册照片')}" />
+      <figcaption>
+        <strong>${escapeHtml(photo.title || '未命名照片')}</strong>
+        ${photo.description ? `<span>${escapeHtml(photo.description)}</span>` : ''}
+      </figcaption>
+    </figure>
+  `;
+
+  lightbox.addEventListener('click', (event) => {
+    if (event.target === lightbox || event.target.closest('.photo-lightbox-close')) {
+      lightbox.remove();
+    }
+  });
+
+  document.body.appendChild(lightbox);
+}
+
+function bindGalleryLightbox(photos) {
+  const photoMap = new Map(photos.map((photo) => [String(photo.id), photo]));
+  document.querySelectorAll('.photo-frame').forEach((button) => {
+    button.addEventListener('click', () => {
+      const photo = photoMap.get(button.dataset.photoId);
+      if (photo) openPhotoLightbox(photo);
+    });
+  });
+}
+
+async function renderGallery() {
+  app.innerHTML = '<div class="glass-card page-state">相册加载中...</div>';
+
+  try {
+    const res = await fetch(`${API_URL}/photos`);
+    const photos = await res.json();
+
+    const photosHtml = photos.length
+      ? `<div class="photo-grid">${photos.map(buildPhotoCard).join('')}</div>`
+      : `
+          <div class="glass-card gallery-empty">
+            <h2>相册正在等待第一束光</h2>
+            <p>登录后台后可以上传照片，给每张照片写一个标题和一小段说明。</p>
+          </div>
+        `;
+
+    app.innerHTML = `
+      <div class="bg-gallery"></div>
+      <section class="gallery-shell">
+        <header class="gallery-hero">
+          <span class="section-kicker">Gallery</span>
+          <h1>相册</h1>
+          <p>把一些生活里的光影收起来。照片不必解释太多，能被再次看见就很好。</p>
+          <div class="gallery-count">
+            <span>${photos.length}</span>
+            <small>photos</small>
+          </div>
+        </header>
+        ${photosHtml}
+      </section>
+    `;
+
+    bindGalleryLightbox(photos);
+  } catch (error) {
+    app.innerHTML = `
+      <div class="glass-card page-state">
+        <h2>相册加载失败</h2>
+        <p>后端接口没有响应，请确认服务已经启动。</p>
       </div>
     `;
   }
@@ -658,6 +787,7 @@ async function renderAdmin() {
         <h2>管理后台</h2>
         <div>
           <a href="/admin/edit" data-link class="glass-btn">新建文章</a>
+          <a href="/admin/gallery" data-link class="glass-btn">管理相册</a>
           <button id="logout-btn" class="glass-btn danger" style="margin-left:10px;">退出登录</button>
         </div>
       </div>
@@ -672,6 +802,115 @@ async function renderAdmin() {
     });
   } catch (error) {
     app.innerHTML = '<div class="glass-card page-state">加载后台失败。</div>';
+  }
+}
+
+async function renderAdminGallery() {
+  try {
+    const res = await fetch(`${API_URL}/photos`);
+    const photos = await res.json();
+
+    const listHtml = photos.length
+      ? photos.map((photo) => `
+          <article class="glass-card admin-photo-card">
+            <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.title || '相册照片')}" loading="lazy" />
+            <div class="admin-photo-info">
+              <h3>${escapeHtml(photo.title || '未命名照片')}</h3>
+              <p>${escapeHtml(photo.description || '没有说明')}</p>
+              <small>${formatDateTime(photo.createdAt)} · ${formatFileSize(photo.size)}</small>
+            </div>
+            <button class="glass-btn danger" type="button" onclick="deletePhoto(${photo.id})">删除</button>
+          </article>
+        `).join('')
+      : '<div class="glass-card page-state">还没有照片，先上传一张吧。</div>';
+
+    app.innerHTML = `
+      <div class="bg-gallery"></div>
+      <section class="admin-gallery-shell">
+        <div class="flex-between mb-20 admin-header">
+          <div>
+            <span class="section-kicker">Gallery Admin</span>
+            <h2>相册管理</h2>
+          </div>
+          <div>
+            <a href="/admin" data-link class="glass-btn">文章后台</a>
+            <a href="/gallery" data-link class="glass-btn">查看相册</a>
+          </div>
+        </div>
+
+        <form id="photo-upload-form" class="glass-card photo-upload-card">
+          <label class="photo-file-picker" for="photo-file">
+            <span class="photo-file-preview" id="photo-file-preview">选择照片</span>
+            <input id="photo-file" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" required />
+          </label>
+
+          <div class="photo-upload-fields">
+            <input id="photo-title" name="title" class="glass-input" type="text" placeholder="照片标题" />
+            <textarea id="photo-description" name="description" class="glass-textarea" rows="4" placeholder="写一句照片说明"></textarea>
+            <p class="upload-hint">支持 JPG、PNG、WebP、GIF、AVIF，单张最大 10MB。HEIC 请先转成 JPG 或 WebP。</p>
+            <button id="photo-upload-btn" class="glass-btn" type="submit">上传到相册</button>
+          </div>
+        </form>
+
+        <div class="admin-photo-list">
+          ${listHtml}
+        </div>
+      </section>
+    `;
+
+    const fileInput = document.getElementById('photo-file');
+    const titleInput = document.getElementById('photo-title');
+    const preview = document.getElementById('photo-file-preview');
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      if (!titleInput.value.trim()) {
+        titleInput.value = file.name.replace(/\.[^.]+$/, '');
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      preview.style.backgroundImage = `linear-gradient(to bottom, rgba(9,12,20,0.08), rgba(9,12,20,0.5)), url("${previewUrl}")`;
+      preview.textContent = file.name;
+    });
+
+    document.getElementById('photo-upload-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = document.getElementById('photo-upload-btn');
+      const originalText = button.innerText;
+      const formData = new FormData(event.currentTarget);
+
+      button.disabled = true;
+      button.innerText = '上传中...';
+
+      try {
+        const uploadRes = await fetch(`${API_URL}/photos`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        const data = await uploadRes.json();
+
+        if (uploadRes.ok) {
+          showToast('照片已加入相册', 'success');
+          await renderAdminGallery();
+        } else if (uploadRes.status === 401 || uploadRes.status === 403) {
+          showToast('登录已失效，请重新登录', 'error');
+          navigateTo('/login');
+        } else {
+          showToast(data.error || '上传失败', 'error');
+          button.disabled = false;
+          button.innerText = originalText;
+        }
+      } catch (error) {
+        showToast(`上传失败：${error.message}`, 'error');
+        button.disabled = false;
+        button.innerText = originalText;
+      }
+    });
+  } catch (error) {
+    app.innerHTML = '<div class="glass-card page-state">加载相册后台失败。</div>';
   }
 }
 
@@ -778,6 +1017,30 @@ window.deleteArticle = async (id) => {
   } catch (error) {
     console.error(error);
     showToast('删除失败', 'error');
+  }
+};
+
+window.deletePhoto = async (id) => {
+  if (!confirm('确定要删除这张照片吗？')) return;
+
+  try {
+    const res = await fetch(`${API_URL}/photos/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (res.ok) {
+      showToast('照片已删除', 'success');
+      renderAdminGallery();
+    } else if (res.status === 401 || res.status === 403) {
+      showToast('登录已失效，请重新登录', 'error');
+      navigateTo('/login');
+    } else {
+      showToast('删除照片失败', 'error');
+    }
+  } catch (error) {
+    console.error(error);
+    showToast('删除照片失败', 'error');
   }
 };
 

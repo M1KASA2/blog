@@ -36,6 +36,18 @@ const db = new sqlite3.Database(dbPath, (err) => {
             updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
 
+        // Create Photos table
+        db.run(`CREATE TABLE IF NOT EXISTS photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            description TEXT,
+            filename TEXT NOT NULL,
+            originalName TEXT,
+            mimeType TEXT,
+            size INTEGER,
+            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         // Create Settings table
         db.run(`CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
